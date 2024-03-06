@@ -9,17 +9,17 @@ class Structure:
         try:                                            
             self.data = data
             pos = 0
-            # The first three lines describe the coordinate system used, the vectors are the rows of the matrix:
+            # The first three lines describe the coordinate system used, the vectors (defined by the lines) make up the rows of the matrix:
             self.coordinate_system = np.matrix([values for vectors in self.data[pos:pos+3] for values in vectors.split()], dtype=float).reshape((3, 3))
             pos += 3
             # The following three lines describe the lattice vectors of the unit cell:
-            # The unit cell expands, therefor this is not a simple identity matrix.
+            # The unit cell is expanded in most cases, therefore this generally not the identity matrix.
             self.lattice_vectors_org = np.matrix([values for vectors in self.data[pos:pos+3] for values in vectors.split()], dtype=float).reshape((3, 3))
             pos += 3
             self.lattice_vectors_car = self.lattice_vectors_org*self.coordinate_system
             
             # Determine the atom types present.
-            self.atom_types = list(set([line.split()[-1] for line in self.data[pos:-2]]))  # beware: the slicing to -2 is to not read 'end'
+            self.atom_types = list(set([line.split()[-1] for line in self.data[pos:-1]]))  # beware: the slicing to -1 is to not read 'end'
             if atom_list is not None:
                 if len(self.atom_types) == len(atom_list):
                     self.atom_types = atom_list
@@ -27,8 +27,8 @@ class Structure:
 
             self.atom_numbers = [0 for atom_type in self.atom_types]
             atoms_unsorted = []
-            # Read in all the atoms
-            for i in range(len(self.data[pos:-2])):
+            # Read in all the atoms.
+            for i in range(len(self.data[pos:-1])):
                 atom_info = self.data[pos+i].split()
                 atom_type = atom_info.pop()
                 self.atom_numbers[self.atom_types.index(atom_type)] += 1
@@ -69,6 +69,7 @@ class Atom:
         self.coords_org = coords_org
         self.struc = struc
     
+    # Transformation of the original coordinates to cartesian or direct.
     # One may insure oneself about these transformations by manually calculating the matrix operations.
     def org_to_car(self):
         transformation = np.transpose(self.struc.coordinate_system)
@@ -80,7 +81,7 @@ class Atom:
 
 
 def printPOSCAR(structure, name, representation):
-    # Check the VASP manual on POSCAR files: https://www.vasp.at/wiki/index.php/POSCAR
+    # For the exact format, check the VASP manual on POSCAR files: https://www.vasp.at/wiki/index.php/POSCAR
     poscar_dir = output_dir+"/poscar_"+str(sqs_count)
     os.mkdir(poscar_dir)
     os.chdir(poscar_dir)
@@ -107,12 +108,13 @@ def printPOSCAR(structure, name, representation):
     return
 
 def main():
+    # Necessities for command line usage:
     print("\nNote: Reading of the coordinate system as \'a, b, c, alpha, beta, gamma\' has not been implemented yet.")
 
-    parser = argparse.ArgumentParser(description='Converts SQS output file (e.g. sqs.out) to VASP POSCAR files.\nNote: Reading of the coordinate system as \'a, b, c, alpha, beta, gamma\' has not been implemented yet.')
-    parser.add_argument('-i', '--ifile', dest='file_name', type=str, help='Name of input file.', required=True)
+    parser = argparse.ArgumentParser(description='Converts SQS output file (e.g. sqs.out) to VASP POSCAR files.')
+    parser.add_argument('-i', '--ifile', dest='file_name', type=str, help='Name of input file.', required=False, default='best_sqs.out')
     parser.add_argument('-n', '--name', dest='name', type=str, help='Name of structure (first line of POSCAR file)', required=False, default='Comment (name of structure).')
-    parser.add_argument('-o', '--order', nargs='*', dest='atom_list', help='Atom types in desired order (VASP calculations require matching order of atoms in POSCAR and POTCAR files).', required=False)
+    parser.add_argument('-o', '--order', nargs='*', dest='atom_list', help='Atom types in desired order (VASP calculations require matching order of atoms in POSCAR and POTCAR files).', required=False, default=['Li', 'Nb', 'Ta', 'O'])
     parser.add_argument('-r', '--repr', default='cartesian', type=str, choices=['car', 'cartesian', 'dir', 'direct'], required=False, help='Choose the representation of atom positions in the POSCAR file.', dest='representation')
     
     args = parser.parse_args()
@@ -127,7 +129,7 @@ def main():
     global input_dir
     input_dir = os.getcwd()
 
-    # Delete and / or rename previous results:
+    # Delete and/or rename previous results:
     if "output_files" in os.listdir(os.getcwd()):
         print("")
         if "output_files~" in os.listdir(os.getcwd()):
@@ -142,15 +144,16 @@ def main():
         print("Renamed previous results. \'/output_files\' is now \'/output_files~\'.")
     os.mkdir(output_dir)
 
-    input_file = open(file_name, 'r')                                   # load file for reading only
-    content = [line.rstrip() for line in input_file.readlines()]        # create list with lines, truncated space at end
-    input_file.close()                                                  # close file
+    input_file = open(file_name, 'r')
+    content = [line.rstrip() for line in input_file.readlines()]        # Create list with lines, truncated space at end
+    input_file.close()
     os.chdir(output_dir)
 
     pos = 0
     global sqs_count
     sqs_count = 0
     data = []
+
     # Creating a separate structure / POSCAR file for each SQS found in the input file.
     num_backspace=0
     while pos in range(len(content)):
@@ -161,7 +164,7 @@ def main():
             printPOSCAR(Structure(data, atom_list), name, representation)
             data = []
             pos += 1
-            
+            # Live count of the number of converted structures:
             if sqs_count > 1:
                 num_backspace=int(np.floor(np.log10(sqs_count-1))+1)
             sys.stdout.write("\b"*num_backspace+"%s" %sqs_count)
